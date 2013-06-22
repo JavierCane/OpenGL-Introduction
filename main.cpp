@@ -1,17 +1,3 @@
-/**********************************************************************************************************************
-  * TODO:
-  *
-  * Pintar suelo con polígono
-  * Aplicar material al suelo
-  * Mover objetos
-  * Dibujar el objeto al pulsar una tecla definiendo sus propiedades por parámetro (mirar Examen1)
-  * Dibujar cono puesto al revés (glutSolidCone)
-  * Dibujar esfera
-  * Dibujar cubo
-  * Especificar el material de los objetos anteriores (mirar Examen1)
-  * Modificar zoom (ver ej. 4 Examen2)
-  * Cálculo de la esfera de la escena en función de los objetos y no del centro de coordenadas (mirar otro TODO)
-  ********************************************************************************************************************/
 
 #ifndef _OPEN_GL_INCLUDED
     #if defined(__APPLE__)
@@ -55,12 +41,24 @@ Coord floor_color;
 Coord floor_translation;
 GLdouble floor_radius;
 
+// Tipo de suelo (true = el suelo será un cubo (se tendrá en cuenta componente y), false = el suelo será un polígono)
+bool floor_by_cube = false;
+
+// Define si intentaré pintar una normal por cada vértice del modelo (en caso de estar definidas) o una normal por cara
+bool normal_per_vertex = true;
+
 // Factor de escalado máximo
 GLdouble max_scale_factor = 4.0;
 // Radio máximo de la escena.
 GLdouble max_scene_radius = 0.0;
 // Relación de aspecto
 GLdouble aspect_ratio = 1.0;
+
+// Altura del objeto a posicionar
+GLdouble object_height = 4.0;
+
+// Offset en y del modelo
+GLdouble model_y_offset;
 
 // Posición del último click para tenerlo en cuenta a la hora de mover la cámara
 Coord last_mouse_click_position;
@@ -237,7 +235,7 @@ void renderCoordinateAxis()
   * Pinta un cubo del tamaño y color especificados con la translación indicada.
   * Usada para pintar el suelo
   */
-void renderCube( Coord size, Coord color, Coord translation )
+void renderColorCube( Coord size, Coord color, Coord translation )
 {
     glColor3f( color.x, color.y, color.z );
     glPushMatrix();
@@ -248,9 +246,66 @@ void renderCube( Coord size, Coord color, Coord translation )
 }
 
 /**
+  * Pinta un cubo del tamaño y color especificados con la translación indicada.
+  */
+void renderMaterialCube( GLdouble edge_lenght )
+{
+    // Componente de luz ambiente. Comunmente baja para poder distinguir cuando le da la luz.
+    GLfloat ambient[] = { 0.2, 0.2, 0.2, 1.0 };
+
+    // Componente de luz difusa. Comunmente más alta que la ambiente para poder distinguir cuando le da la luz.
+    GLfloat diffuse[] = { 0.5, 0.5, 0.5, 1.0 };
+
+    // Componente de luz especular. Comunmente blanca para poder reflejar todos los colores que le lleguen.
+    // Al ser un material pulido la subimos bastante
+    GLfloat specular[] = { 0.8, 0.8, 0.8, 1.0 };
+
+    // Componente de brillantez. Al ser un material metálico la subimos bastante
+    GLfloat shininess = 100;
+
+    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, ambient );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, diffuse );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, specular );
+    glMaterialf( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
+
+    glPushMatrix();
+        glTranslated( 0.0, edge_lenght / 2.0, 0.0 );
+        glutSolidCube( edge_lenght ); // renderizo un cubo de tamaño de aresta 4
+    glPopMatrix();
+}
+/**
+  * Pinta una esfera del radio especificado.
+  */
+void renderMaterialSphere( GLdouble radius )
+{
+    // Componente de luz ambiente. Comunmente baja para poder distinguir cuando le da la luz.
+    GLfloat ambient[] = { 0.2, 0.2, 0.2, 1.0 };
+
+    // Componente de luz difusa. Comunmente más alta que la ambiente para poder distinguir cuando le da la luz.
+    GLfloat diffuse[] = { 0.5, 0.5, 0.5, 1.0 };
+
+    // Componente de luz especular. Comunmente blanca para poder reflejar todos los colores que le lleguen.
+    // Al ser un material pulido la subimos bastante
+    GLfloat specular[] = { 0.8, 0.8, 0.8, 1.0 };
+
+    // Componente de brillantez. Al ser un material metálico la subimos bastante
+    GLfloat shininess = 100;
+
+    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, ambient );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, diffuse );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, specular );
+    glMaterialf( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
+
+    glPushMatrix();
+        glTranslated( 0.0, radius, 0.0 );
+        glutSolidSphere( radius, 75, 75 );
+    glPopMatrix();
+}
+
+/**
   * Pinta una esfera de radio y color indicados. Dependiendo del booleano solid la pinta sólida o "a hilos".
   */
-void renderSphere( GLdouble radius, Coord color, bool solid )
+void renderColorSphere( GLdouble radius, Coord color, bool solid )
 {
     glColor3f( color.x, color.y, color.z );
     glPushMatrix();
@@ -271,21 +326,21 @@ void renderSphere( GLdouble radius, Coord color, bool solid )
 void renderPolygonFloor( Coord floor_size )
 {
     // Componente de luz ambiente. Comunmente baja para poder distinguir cuando le da la luz.
-    GLfloat floor_ambient[] = { 0.0, 0.0, 0.6, 1.0 };
+    GLfloat ambient[] = { 0.0, 0.0, 0.2, 1.0 };
 
     // Componente de luz difusa. Comunmente más alta que la ambiente para poder distinguir cuando le da la luz.
-    GLfloat floor_diffuse[] = { 0.0, 0.0, 0.6, 1.0 };
+    GLfloat diffuse[] = { 0.0, 0.0, 0.6, 1.0 };
 
     // Componente de luz especular. Comunmente blanca para poder reflejar todos los colores que le lleguen.
     // Al ser un material pulido la subimos bastante
-    GLfloat floor_specular[] = { 0.6, 0.6, 0.6, 1.0 };
+    GLfloat specular[] = { 0.8, 0.8, 0.8, 1.0 };
 
     // Componente de brillantez. Al ser un material metálico la subimos bastante
     GLfloat shininess = 100;
 
-    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, floor_ambient );
-    glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, floor_diffuse );
-    glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, floor_specular );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, ambient );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, diffuse );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, specular );
     glMaterialf( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
 
     // Especifico normal hacia arriba
@@ -307,7 +362,7 @@ void renderPolygonFloor( Coord floor_size )
   */
 void calcModelTransformation( Model *model, ModelContainer *model_box, Coord *model_center_translation, Coord *model_floor_translation,
                       GLdouble model_scale_factor, bool center_in_0, GLdouble transformation_matrix[16],
-                      GLdouble *max_scene_radius, GLdouble floor_height )
+                      GLdouble *max_scene_radius, GLdouble y_offset )
 {
     // Empiezo matriz de transformación en base a la modificación de cámara realizada previamente
     glPushMatrix();
@@ -317,7 +372,7 @@ void calcModelTransformation( Model *model, ModelContainer *model_box, Coord *mo
 
     if ( !center_in_0 )
     {
-        glTranslated( 0, floor_height, 0 );
+        glTranslated( 0, y_offset, 0 );
     }
 
     glScaled( model_scale_factor, model_scale_factor, model_scale_factor ); // Escalo el objeto en base al factor de escala
@@ -395,14 +450,23 @@ void renderModel( Model *model, GLdouble transformation_matrix[16] )
         }
 
         // Indicamos la normal a la superficie actual para que el modelo de iluminación empírico pueda hacerla servir
-        glNormal3dv( faces[face_iteration].normalC );
+        // Si hemos establecido pintar una normal por cara o si el modelo no tiene normales por vértice, pinto normal por cara
+        if ( !normal_per_vertex || ( *model ).normals().size() == 0 )
+        {
+            glNormal3dv( faces[face_iteration].normalC );
+        }
 
         // Como los objetos están almacenados de forma triangular, por cada cara itero por sus tres vértices y los pinto
         glBegin( GL_TRIANGLES );
 
-        // TODO: Materiales
         for ( int vertex_iteration = 0; vertex_iteration < 3; ++vertex_iteration )
         {
+            // Si hemos definido pintar una normal por vértice y el modelo tiene normales por vértice, las aplico
+            if ( normal_per_vertex && ( *model ).normals().size() > 0 )
+            {
+                glNormal3dv( &model->normals()[ faces[face_iteration].n[vertex_iteration] ] );
+            }
+
             glVertex3dv( &model->vertices()[ faces[face_iteration].v[ vertex_iteration ] ] );
         }
 
@@ -457,22 +521,27 @@ void renderScene( void )
 
     renderCoordinateAxis(); // Dibujamos ejes de coordenadas
 
-    //renderCube( floor_size, floor_color, floor_translation ); // Renderizo un cubo aplanado (suelo)
+    //renderColorCube( floor_size, floor_color, floor_translation ); // Renderizo un cubo aplanado (suelo)
     renderPolygonFloor( floor_size ); // Renderizo polígono suelo
 
-    // Renderizo el Homer aplicando  transformaciones de rotación
-    glColor3f( 0.5, 0.5, 0.5 ); // Establezco color gris para pintar el homer
+    //renderMaterialCube( object_height );
+    renderMaterialSphere( object_height / 2.0 );
+
+    // Renderizo el modelo aplicando  transformaciones de rotación
     renderModel( &model_structure, model_transformation_matrix );
 
     // Renderizo esfera contenedora
     if ( show_container_sphere )
     {
+        glDisable( GL_LIGHTING ); // Desactivo iluminación para que no le afecte a la esfera contenedora
         Coord sphere_color;
         sphere_color.x = 0.0;
         sphere_color.y = 0.7;
         sphere_color.z = 0.7;
 
-        renderSphere( max_scene_radius, sphere_color, false );
+        renderColorSphere( max_scene_radius, sphere_color, false );
+
+        glEnable( GL_LIGHTING ); // Desactivo iluminación para que no le afecte a la esfera contenedora
     }
 
     glutSwapBuffers();
@@ -540,7 +609,7 @@ void mouseDragEvent( int mouse_x, int mouse_y )
             camera.zoom = 0.00001;
         }
 
-        cameraControl::moveCamera( camera );
+        cameraControl::initCamera( camera, max_scene_radius );
     }
     else if ( glutGetModifiers() == GLUT_ACTIVE_SHIFT ) // Si está el shift apretado, modifico los ángulos de visionado
     {
@@ -823,9 +892,19 @@ int main( int argc, const char *argv[] )
     loadAndCalcObjectData( "./Model/porsche.obj", &model_structure, &model_box, &model_center_translation,
                            &model_floor_translation );
 
+
+    if ( floor_by_cube )
+    {
+        model_y_offset = floor_size.y + object_height;
+    }
+    else
+    {
+        model_y_offset = object_height;
+    }
+
     // Calculo los parámetros para el renderizado del modelo del homer (matriz de transformación) que usaré cada vez que deba renderizarlo
     calcModelTransformation( &model_structure, &model_box, &model_center_translation, &model_floor_translation, model_scale_factor,
-                     false, model_transformation_matrix, &max_scene_radius, floor_size.y );
+                     false, model_transformation_matrix, &max_scene_radius, model_y_offset );
 
     setCameraPropierties( &camera, 2.0, true, false, 1.0, max_scene_radius, 1.0 ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
 
