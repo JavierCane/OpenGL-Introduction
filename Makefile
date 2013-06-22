@@ -1,7 +1,7 @@
 CC = g++
 LIBRARIES = -lGL -lglut -lGLU
 INCLUDES = ./Model/model.h ./Model/model.cpp
-OBJ = main.o utils.o cameraFunctions.o lightControl.o
+OBJ = main.o utils.o cameraControl.o lightControl.o
 EXEC = main
 
 all:  $(EXEC)
@@ -15,8 +15,8 @@ main.o: main.cpp
 utils.o: utils.cpp
 	g++ -c utils.cpp $(INCLUDES) $(LIBRARIES)
 
-cameraFunctions.o: cameraFunctions.cpp
-	g++ -c cameraFunctions.cpp $(INCLUDES) $(LIBRARIES)
+cameraControl.o: cameraControl.cpp
+	g++ -c cameraControl.cpp $(INCLUDES) $(LIBRARIES)
 
 lightControl.o: lightControl.cpp
 	g++ -c lightControl.cpp $(INCLUDES) $(LIBRARIES)

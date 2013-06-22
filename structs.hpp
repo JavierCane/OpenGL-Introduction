@@ -37,7 +37,7 @@ struct Light
 {
     bool enabled;
     GLfloat position[4], ambient[4], diffuse[4], specular[4];
-    lightControl::dynamicPosition dynamic_position;
+    lightControl::dynamicLightPosition dynamic_light_position;
 };
 
 #endif

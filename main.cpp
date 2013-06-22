@@ -4,22 +4,21 @@
   * Dudas:
   *
   * Aclarar 4ºs parámetros de initLight0Propierties (no pos)
-  * Diferencia entre luz de cámara y luz de ¿?
+  * Diferencia entre luz de cámara y luz de escena en cuanto a movimiento de cámara (¿light0 debería aplicar transformaciones?)
   * ¿Por qué por defecto luz de cámara?
   *
   *
   * Funcionalidades:
   *
-  * Resetear vista frontal => pasarlo a teclas rotativas
-  * Cálculo de la esfera de la escena en función de los objetos y no del centro de coordenadas (mirar otro TODO)
-  * Luces de cámara/observador
+  * Cambiar vista (incluyendo reset) => pasarlo a teclas rotativas
   * Dibujar el objeto al pulsar una tecla definiendo sus propiedades por parámetro (mirar Examen1)
   * Dibujar cono puesto al revés (glutSolidCone)
   * Dibujar esfera
   * Dibujar cubo
   * Especificar el material de los objetos anteriores (mirar Examen1)
-  * Definir 3 modos de cámara mediante enums (planta, frente y perfil), rotativos al pulsar una tecla.
+  * Modificar zoom (ver ej. 4 Examen2)
   * Cargar un segundo modelo
+  * Cálculo de la esfera de la escena en función de los objetos y no del centro de coordenadas (mirar otro TODO)
   ********************************************************************************************************************/
 
 #ifndef _OPEN_GL_INCLUDED
@@ -46,14 +45,16 @@ using namespace std;
 #include "structs.hpp"
 #include "utils.hpp"
 #include "modelPropierties.hpp"
-#include "cameraFunctions.hpp"
-#include "cameraPropierties.hpp"
+#include "cameraControl.hpp"
 #include "lightControl.cpp"
 
 // Luces
 Light light0, light1;
 
-// Relación de aspecto
+// Cámara
+Camera camera;
+
+// Mostrar la esfera contenedora o no
 bool show_container_sphere = true;
 
 // Propiedades del suelo
@@ -105,14 +106,15 @@ void initFloorPropierties( Coord *floor_size, Coord *floor_color, Coord *floor_t
   * Inicializa propiedades de luz de cámara (LIGHT0).
   * Ya se inicializan por defecto, pero por probar y tal :)
   */
-void initLight0Propierties( Light *light0, bool enabled )
+void initLight0Propierties( Light *light0, GLdouble max_scene_radius, bool enabled )
 {
     light0->enabled = enabled;
 
-    light0->position[0] = 1.0;
-    light0->position[1] = 3.5;
-    light0->position[2] = 1.0;
-    light0->position[3] = 1.0; // 1 = Estamos definiendo posición de la luz, 0 = Estamos definiendo vector desde donde viene la luz (sol...)
+    // No defino la posición para dejar que lo haga OpenGL y así siga a la cámara automáticamente ( no llamaré a glLightfv( GL_LIGHT0, GL_POSITION, light0.position ); :) )
+//    light0->position[0] = 0.0;
+//    light0->position[1] = max_scene_radius;
+//    light0->position[2] = 0.0;
+//    light0->position[3] = 1.0; // 1 = Estamos definiendo posición de la luz, 0 = Estamos definiendo vector desde donde viene la luz (sol...)
 
     light0->ambient[0] = 0.5;
     light0->ambient[1] = 0.5;
@@ -135,29 +137,43 @@ void initLight0Propierties( Light *light0, bool enabled )
   *  Lo hace en función del tamaño del suelo y
   * de la posición dinámica que tenga la luz en este momento (valor del enum lightControl::dynamicPosition)
   */
-void initLight1Propierties( Light *light1, Coord floor_size, bool enabled )
+void initLight1Propierties( Light *light1, Coord floor_size, GLdouble max_scene_radius, bool enabled )
 {
     light1->enabled = enabled;
 
-    light1->position[0] = floor_size.x * lightControl::getXSign( light1->dynamic_position );
-    light1->position[1] = floor_size.y - 0.5;
-    light1->position[2] = floor_size.z * lightControl::getZSign( light1->dynamic_position );
+    light1->position[0] = floor_size.x * lightControl::getXSign( light1->dynamic_light_position );
+    light1->position[1] = max_scene_radius;
+    light1->position[2] = floor_size.z * lightControl::getZSign( light1->dynamic_light_position );
     light1->position[3] = 1.0; // 1 = Estamos definiendo posición de la luz, 0 = Estamos definiendo vector desde donde viene la luz (sol...)
 
     light1->ambient[0] = 0.5;
-    light1->ambient[1] = 0.5;
-    light1->ambient[2] = 0.5;
-    light1->ambient[3] = 1.0;
+    light1->ambient[1] = 0.0;
+    light1->ambient[2] = 0.0;
+    light1->ambient[3] = 0.5;
 
     light1->diffuse[0] = 0.5;
-    light1->diffuse[1] = 0.5;
-    light1->diffuse[2] = 0.5;
-    light1->diffuse[3] = 1.0;
+    light1->diffuse[1] = 0.0;
+    light1->diffuse[2] = 0.0;
+    light1->diffuse[3] = 0.2;
 
-    light1->specular[0] = 0.75;
-    light1->specular[1] = 0.75;
-    light1->specular[2] = 0.75;
-    light1->specular[3] = 1.0;
+    light1->specular[0] = 0.5;
+    light1->specular[1] = 0.0;
+    light1->specular[2] = 0.0;
+    light1->specular[3] = 0.2;
+}
+
+void setCameraPropierties( Camera *camera, GLdouble distance_from_scene_radius, bool camera_ortho_mode, bool camera_euler_mode, GLdouble zoom, GLdouble max_scene_radius, GLdouble initial_aspect_ratio )
+{
+    // Inicializo ángulos de euler y VRP para mirar de frente
+    camera->euler_angles.x = camera->vrp_pos.x =
+    camera->euler_angles.y = camera->vrp_pos.y =
+    camera->euler_angles.z = camera->vrp_pos.z = 0;
+
+    camera->camera_distance = distance_from_scene_radius * max_scene_radius; // Definimos la distancia inicial de las cámaras a 2 veces el radio máximo de la escena
+    camera->camera_ortho_mode = camera_ortho_mode;
+    camera->camera_euler_mode = camera_euler_mode;
+    camera->zoom = zoom;
+    camera->aspect_ratio = initial_aspect_ratio;
 }
 
 /**
@@ -168,10 +184,10 @@ void initGL( int argc, const char *argv[] )
 {
     glutInit( &argc, ( char ** )argv );
     glutInitDisplayMode( GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH ); // Activo doble buffer, colores RGB y buffer de profundidad
-    glutInitWindowSize( 1024, 768 );
+    glutInitWindowSize( 800, 600 );
 
     // Propiedades de la ventana
-    glutCreateWindow( "[IDI] 03 Camaras" );
+    glutCreateWindow( "[IDI] 04 Iluminacion" );
 
     glEnable( GL_DEPTH_TEST ); // Activo algoritmo z-buffer (sólo pintar elementos más cercanos) (tiene que estar después del createWindow)
     glEnable( GL_NORMALIZE ); // Activo normalización de normales para que a pesar de escalar los objetos las normales se mantengan igual.
@@ -383,7 +399,7 @@ void renderScene( void )
     // Establezco propiedades de la luz de cámara (LIGHT0) en caso de que esté habilitada
     if ( light0.enabled )
     {
-        glLightfv( GL_LIGHT0, GL_POSITION, light0.position );
+        //glLightfv( GL_LIGHT0, GL_POSITION, light0.position );
         glLightfv( GL_LIGHT0, GL_AMBIENT, light0.ambient );
         glLightfv( GL_LIGHT0, GL_DIFFUSE, light0.diffuse );
         glLightfv( GL_LIGHT0, GL_SPECULAR, light0.specular );
@@ -435,9 +451,9 @@ void reshapeScene( int w_window, int h_window )
     int x_viewport = 0;
     int y_viewport = 0;
 
-    aspect_ratio = GLdouble ( w_window ) / GLdouble ( h_window );
+    camera.aspect_ratio = GLdouble ( w_window ) / GLdouble ( h_window );
 
-    initCamera( camera_ortho_mode, max_scene_radius, aspect_ratio, camera_distance, zoom );
+    cameraControl::initCamera( camera, max_scene_radius );
 
     glViewport( x_viewport, y_viewport, w_viewport, h_viewport );
 
@@ -480,14 +496,15 @@ void mouseDragEvent( int mouse_x, int mouse_y )
     // Si está con el ctrl apretado, aumento zoom,
     if ( glutGetModifiers() == GLUT_ACTIVE_CTRL )
     {
-        zoom += ( GLdouble ) ( mouse_y - last_mouse_click_position.y ) / glutGet( GLUT_WINDOW_HEIGHT );
+        camera.zoom += ( GLdouble ) ( mouse_y - last_mouse_click_position.y ) / glutGet( GLUT_WINDOW_HEIGHT );
 
-        if ( zoom < 0.00001 )
+        // Zoom mínimo
+        if ( camera.zoom < 0.00001 )
         {
-            zoom = 0.00001;
+            camera.zoom = 0.00001;
         }
 
-        initCamera( camera_ortho_mode, max_scene_radius, aspect_ratio, camera_distance, zoom );
+        cameraControl::moveCamera( camera );
     }
     else if ( glutGetModifiers() == GLUT_ACTIVE_SHIFT ) // Si está el shift apretado, modifico los ángulos de visionado
     {
@@ -500,14 +517,13 @@ void mouseDragEvent( int mouse_x, int mouse_y )
         glRotated( inspect_angle_x, 1.0, 0.0, 0.0 );
         glRotated( inspect_angle_y, 0.0, 1.0, 0.0 );
         glMultMatrixd( transformation_matrix );
-
     }
     else // Si no hay modificadores, muevo ángulos de Euler
     {
-        euler_angles.x += 180.0 * ( GLdouble ) ( mouse_y - last_mouse_click_position.y ) / glutGet( GLUT_WINDOW_HEIGHT );
-        euler_angles.y -= 180.0 * ( GLdouble ) ( mouse_x - last_mouse_click_position.x ) / glutGet( GLUT_WINDOW_WIDTH );
+        camera.euler_angles.x += 180.0 * ( GLdouble ) ( mouse_y - last_mouse_click_position.y ) / glutGet( GLUT_WINDOW_HEIGHT );
+        camera.euler_angles.y -= 180.0 * ( GLdouble ) ( mouse_x - last_mouse_click_position.x ) / glutGet( GLUT_WINDOW_WIDTH );
 
-        positionCamera( max_scene_radius, camera_euler_mode, euler_angles, vrp_pos, camera_distance ); // Declaro posición cámara ortogonal
+        cameraControl::moveCamera( camera );
     }
 
     last_mouse_click_position.y = mouse_y;
@@ -523,85 +539,112 @@ void keyboardEvent( unsigned char key, int mouse_x, int mouse_y )
 {
     if ( 'h' == key ) // h => help
     {
-        cout << endl << "*** Ayuda ***" << endl << endl;
+        cout << endl << "******************************************************* Ayuda **********************************************************" << endl << endl;
 
-        cout << "Pulsa la tecla [h] para acceder a esta ayuda (help)." << endl << endl;
+        cout << "Pulsa la tecla [h] para acceder a esta ayuda (help)." << endl;
+        cout << "Pulsa la tecla [Esc] para salir del programa." << endl << endl;
 
-        cout << "Pulsa la tecla [x] para habilitar el modo de cámara axonométrica/ortogonal." << endl;
+        cout << "/                                                   *** Cámaras ***                                                    \\" << endl;
+        cout << "Pulsa la tecla [x] para habilitar el modo de cámara axonométrica/ortogonal (habilitada por defecto)." << endl;
         cout << "Pulsa la tecla [p] para habilitar el modo de cámara perspectiva." << endl << endl;
 
-        cout << "Pulsa la tecla [a] para habilitar el cálculo de la posición de la cámara mediante gluLookAt." << endl;
+        cout << "Pulsa la tecla [a] para habilitar el cálculo de la posición de la cámara mediante gluLookAt (habilitado por defecto)." << endl;
         cout << "Pulsa la tecla [e] para habilitar el cálculo de la posición de la cámara mediante Euler." << endl << endl;
 
+        cout << "Pulsa la tecla [m] para cambiar la vista de cámara (Definida por usuario, planta, frente y perfil)." << endl << endl;
+
         cout << "Pulsa la tecla [1] para resetear la vista de cámara a la vista en planta (1 = número uno, no confundir con letra l)." << endl;
-        cout << "Pulsa la tecla [2] para resetear la vista de cámara a la vista en lateral." << endl << endl;
+        cout << "Pulsa la tecla [2] para resetear la vista de cámara a la vista de perfil." << endl << endl;
 
-        cout << "Pulsa la tecla [c] para des/habilitar la luz de cámara (LIGHT0)." << endl;
-        cout << "Pulsa la tecla [f] para des/habilitar la luz de escena (LIGHT1)." << endl;
-        cout << "Pulsa la tecla [s] para cambiar la posición de la luz de escena (LIGHT1)." << endl << endl;
+        cout << "/                                                   *** Luces ***                                                     \\" << endl;
+        cout << "Pulsa la tecla [c] para des/habilitar la luz de cámara (LIGHT0) (habilitada por defecto)." << endl;
+        cout << "Pulsa la tecla [f] para des/habilitar la luz de escena (LIGHT1) (deshabilitada por defecto)." << endl;
+        cout << "Pulsa la tecla [s] para cambiar la posición de la luz de escena (LIGHT1) (Centro, izquierda atrás, derecha atrás, derecha delante e izquierda delante)." << endl << endl;
 
-        cout << "Pulsa la tecla [Esc] para salir del programa." << endl << endl;
     }
     else if ( 27 == key ) // Esc => Exit
     {
+        cout << "Bye!" << endl;
+
         exit( 0 );
     }
     else if ( key == 'x' )
     {
-        camera_ortho_mode = true; // cámara ortogonal/axonométrica
+        cout << "Se ha  habilitado el modo de cámara axonométrica/ortogonal." << endl;
 
-        initCamera( camera_ortho_mode, max_scene_radius, aspect_ratio, camera_distance, zoom ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
+        camera.camera_ortho_mode = true; // cámara ortogonal/axonométrica
+
+        cameraControl::initCamera( camera, max_scene_radius ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
     }
     else if ( key == 'p' )
     {
-        camera_ortho_mode = false; // cámara perspectiva
+        cout << "Se ha  habilitado el modo de cámara perspectiva." << endl;
 
-        initCamera( camera_ortho_mode, max_scene_radius, aspect_ratio, camera_distance, zoom ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
+        camera.camera_ortho_mode = false; // cámara perspectiva
+
+        cameraControl::initCamera( camera, max_scene_radius ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
     }
     else if ( key == 'a' )
     {
-        camera_euler_mode = false; // cálculo de la posición de la cámara mediante gluLookAt
+        cout << "Se ha  habilitado el cálculo de la posición de la cámara mediante gluLookAt." << endl;
 
-        positionCamera( max_scene_radius, camera_euler_mode, euler_angles, vrp_pos, camera_distance ); // Declaro posición cámara ortogonal
+        camera.camera_euler_mode = false; // cálculo de la posición de la cámara mediante gluLookAt
+
+        cameraControl::moveCamera( camera );
     }
     else if ( key == 'e' )
     {
-        camera_euler_mode = true; // cálculo de la posición de la cámara mediante euler
+        cout << "Se ha  habilitado el cálculo de la posición de la cámara mediante Euler." << endl;
 
-        positionCamera( max_scene_radius, camera_euler_mode, euler_angles, vrp_pos, camera_distance ); // Declaro posición cámara ortogonal
+        camera.camera_euler_mode = true; // cálculo de la posición de la cámara mediante euler
+
+        cameraControl::moveCamera( camera );
     }
     else if ( key == '1' )
     {
-        floorPlan( max_scene_radius, camera_euler_mode, &euler_angles, &vrp_pos, camera_distance ); // Reseteo posición de cámara a la vista en planta
+        cout << "Se ha reseteado la vista a la vista en planta." << endl;
+
+        cameraControl::floorPlan( &camera );
     }
     else if ( key == '2' )
     {
-        sidePlan( max_scene_radius, camera_euler_mode, &euler_angles, &vrp_pos, camera_distance ); // Reseteo posición de cámara a la vista en planta
+        cout << "Se ha reseteado la vista a la vista de perfil." << endl;
+
+        cameraControl::sidePlan( &camera );
+    }
+    else if ( key == 'm' )
+    {
+        cout << "Se ha reseteado la vista a la vista de perfil." << endl;
+
+        cameraControl::sidePlan( &camera );
     }
     else if ( key == 'c' )
     {
         // Si antes estaba habilitada, la deshabilito y viceversa
         if ( light0.enabled )
         {
+            cout << "Se ha desactivado la luz de cámara." << endl;
             glDisable( GL_LIGHT0 ); // Desactivo luz de cámara
         }
         else
         {
+            cout << "Se ha activado la luz de cámara." << endl;
             glEnable( GL_LIGHT0 ); // Activo luz de cámara
         }
 
         light0.enabled = !light0.enabled;
-        initLight0Propierties( &light0, true ); // Inicializo LIGHT0
     }
     else if ( key == 'f' )
     {
         // Si antes estaba habilitada, la deshabilito y viceversa
         if ( light1.enabled )
         {
+            cout << "Se ha desactivado la luz de escena." << endl;
             glDisable( GL_LIGHT1 ); // Desactivo luz de cámara
         }
         else
         {
+            cout << "Se ha activado la luz de escena." << endl;
             glEnable( GL_LIGHT1 ); // Activo luz de cámara
         }
 
@@ -610,11 +653,13 @@ void keyboardEvent( unsigned char key, int mouse_x, int mouse_y )
     else if ( key == 's' )
     {
         // Cambio la posición dinámica de la luz
-        light1.dynamic_position = lightControl::getNext( light1.dynamic_position );
+        light1.dynamic_light_position = lightControl::getNext( light1.dynamic_light_position );
 
         // Vuelvo a inicializar los parámetros (entre ellos las coordenadas de la posición) de la luz
         // Necesario para que cuando se encienda, se haga en la posición que se ha modificado a pesar de estar apagada
-        initLight1Propierties( &light1, floor_size, light1.enabled );
+        initLight1Propierties( &light1, floor_size, max_scene_radius, light1.enabled );
+
+        cout << "Se ha posicionado la luz de escena en " << light1.dynamic_light_position << " independientemente de si estaba encendida o no." << endl;
     }
     else
     {
@@ -737,16 +782,11 @@ void loadAndCalcObjectData( string object_path, Model *model_structure, ModelCon
   */
 int main( int argc, const char *argv[] )
 {
-    // Inicializo ángulos de euler y VRP para mirar de frente
-    euler_angles.x = vrp_pos.x =
-    euler_angles.y = vrp_pos.y =
-    euler_angles.z = vrp_pos.z = 0;
-
     initFloorPropierties( &floor_size, &floor_color, &floor_translation, &max_scene_radius ); // Inicializo suelo
 
-    initLight0Propierties( &light0, true ); // Inicializo LIGHT0
+    initLight0Propierties( &light0, max_scene_radius, true ); // Inicializo LIGHT0
 
-    initLight1Propierties( &light1, floor_size, false ); // Inicializo LIGHT1
+    initLight1Propierties( &light1, floor_size, max_scene_radius, false ); // Inicializo LIGHT1
 
     initGL( argc, argv ); // Inicializo propiedades OpenGL
 
@@ -758,11 +798,11 @@ int main( int argc, const char *argv[] )
     calcModelTransformation( &model_structure, &model_box, &model_center_translation, &model_floor_translation, model_scale_factor,
                      false, model_transformation_matrix, &max_scene_radius, floor_size.y );
 
-    camera_distance = 2.0 * max_scene_radius; // Definimos la distancia inicial de las cámaras a 2 veces el radio máximo de la escena
+    setCameraPropierties( &camera, 2.0, true, false, 1.0, max_scene_radius, 1.0 ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
 
-    initCamera( camera_ortho_mode, max_scene_radius, aspect_ratio, camera_distance, zoom ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
+    cameraControl::initCamera( camera, max_scene_radius ); // Inicializo cámara ortogonal en base a la esferá mínima contenedora de los objetos anteriores
 
-    positionCamera( max_scene_radius, camera_euler_mode, euler_angles, vrp_pos, camera_distance ); // Declaro posición cámara ortogonal
+    cameraControl::moveCamera( camera ); // Declaro posición cámara ortogonal
 
     glClearColor( 0.1, 0.1, 0.1, 1.0 ); // Establezo color de fondo de la ventana
 
