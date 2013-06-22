@@ -1,23 +1,15 @@
 /**********************************************************************************************************************
   * TODO:
   *
-  * Dudas:
-  *
-  * Aclarar 4ºs parámetros de initLight0Propierties (no pos)
-  * Diferencia entre luz de cámara y luz de escena en cuanto a movimiento de cámara (¿light0 debería aplicar transformaciones?)
-  * ¿Por qué por defecto luz de cámara?
-  *
-  *
-  * Funcionalidades:
-  *
-  * Cambiar vista (incluyendo reset) => pasarlo a teclas rotativas
+  * Pintar suelo con polígono
+  * Aplicar material al suelo
+  * Mover objetos
   * Dibujar el objeto al pulsar una tecla definiendo sus propiedades por parámetro (mirar Examen1)
   * Dibujar cono puesto al revés (glutSolidCone)
   * Dibujar esfera
   * Dibujar cubo
   * Especificar el material de los objetos anteriores (mirar Examen1)
   * Modificar zoom (ver ej. 4 Examen2)
-  * Cargar un segundo modelo
   * Cálculo de la esfera de la escena en función de los objetos y no del centro de coordenadas (mirar otro TODO)
   ********************************************************************************************************************/
 
@@ -46,7 +38,7 @@ using namespace std;
 #include "utils.hpp"
 #include "modelPropierties.hpp"
 #include "cameraControl.hpp"
-#include "lightControl.cpp"
+#include "lightControl.hpp"
 
 // Luces
 Light light0, light1;
@@ -84,7 +76,7 @@ Coord last_mouse_click_position;
 /**
   * Inicializa las propiedades del suelo
   */
-void initFloorPropierties( Coord *floor_size, Coord *floor_color, Coord *floor_translation, GLdouble *max_scene_radius )
+void setFloorPropierties( Coord *floor_size, Coord *floor_color, Coord *floor_translation, GLdouble *max_scene_radius )
 {
     floor_size->x = 10;
     floor_size->y = 1;
@@ -106,10 +98,12 @@ void initFloorPropierties( Coord *floor_size, Coord *floor_color, Coord *floor_t
   * Inicializa propiedades de luz de cámara (LIGHT0).
   * Ya se inicializan por defecto, pero por probar y tal :)
   */
-void initLight0Propierties( Light *light0, GLdouble max_scene_radius, bool enabled )
+void setLight0Propierties( Light *light0, GLdouble max_scene_radius, bool enabled )
 {
     light0->enabled = enabled;
 
+    // No hago nada con respecto a la luz ambiente (LIGHT0) para respetar los valores por defecto
+    /*
     // No defino la posición para dejar que lo haga OpenGL y así siga a la cámara automáticamente ( no llamaré a glLightfv( GL_LIGHT0, GL_POSITION, light0.position ); :) )
 //    light0->position[0] = 0.0;
 //    light0->position[1] = max_scene_radius;
@@ -130,6 +124,7 @@ void initLight0Propierties( Light *light0, GLdouble max_scene_radius, bool enabl
     light0->specular[1] = 0.75;
     light0->specular[2] = 0.75;
     light0->specular[3] = 1.0;
+    */
 }
 
 /**
@@ -137,7 +132,7 @@ void initLight0Propierties( Light *light0, GLdouble max_scene_radius, bool enabl
   *  Lo hace en función del tamaño del suelo y
   * de la posición dinámica que tenga la luz en este momento (valor del enum lightControl::dynamicPosition)
   */
-void initLight1Propierties( Light *light1, Coord floor_size, GLdouble max_scene_radius, bool enabled )
+void setLight1Propierties( Light *light1, Coord floor_size, GLdouble max_scene_radius, bool enabled )
 {
     light1->enabled = enabled;
 
@@ -146,22 +141,26 @@ void initLight1Propierties( Light *light1, Coord floor_size, GLdouble max_scene_
     light1->position[2] = floor_size.z * lightControl::getZSign( light1->dynamic_light_position );
     light1->position[3] = 1.0; // 1 = Estamos definiendo posición de la luz, 0 = Estamos definiendo vector desde donde viene la luz (sol...)
 
-    light1->ambient[0] = 0.5;
+    light1->ambient[0] = 0.2;
     light1->ambient[1] = 0.0;
     light1->ambient[2] = 0.0;
-    light1->ambient[3] = 0.5;
+    light1->ambient[3] = 1.0;
 
-    light1->diffuse[0] = 0.5;
+    // La componente difusa y especular, en las luces, suele ser similar
+    light1->diffuse[0] = 0.8;
     light1->diffuse[1] = 0.0;
     light1->diffuse[2] = 0.0;
-    light1->diffuse[3] = 0.2;
+    light1->diffuse[3] = 1.0;
 
-    light1->specular[0] = 0.5;
+    light1->specular[0] = 0.8;
     light1->specular[1] = 0.0;
     light1->specular[2] = 0.0;
-    light1->specular[3] = 0.2;
+    light1->specular[3] = 1.0;
 }
 
+/**
+  * Inicializa las propiedades de la cámara
+  */
 void setCameraPropierties( Camera *camera, GLdouble distance_from_scene_radius, bool camera_ortho_mode, bool camera_euler_mode, GLdouble zoom, GLdouble max_scene_radius, GLdouble initial_aspect_ratio )
 {
     // Inicializo ángulos de euler y VRP para mirar de frente
@@ -264,6 +263,40 @@ void renderSphere( GLdouble radius, Coord color, bool solid )
             glutWireSphere( radius, 20, 20 );
         }
     glPopMatrix();
+}
+
+/**
+  * Renderiza un polígono para hacer de suelo
+  */
+void renderPolygonFloor( Coord floor_size )
+{
+    // Componente de luz ambiente. Comunmente baja para poder distinguir cuando le da la luz.
+    GLfloat floor_ambient[] = { 0.0, 0.0, 0.6, 1.0 };
+
+    // Componente de luz difusa. Comunmente más alta que la ambiente para poder distinguir cuando le da la luz.
+    GLfloat floor_diffuse[] = { 0.0, 0.0, 0.6, 1.0 };
+
+    // Componente de luz especular. Comunmente blanca para poder reflejar todos los colores que le lleguen.
+    // Al ser un material pulido la subimos bastante
+    GLfloat floor_specular[] = { 0.6, 0.6, 0.6, 1.0 };
+
+    // Componente de brillantez. Al ser un material metálico la subimos bastante
+    GLfloat shininess = 100;
+
+    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, floor_ambient );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, floor_diffuse );
+    glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, floor_specular );
+    glMaterialf( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
+
+    // Especifico normal hacia arriba
+    glNormal3d( 0.0, 1.0, 0.0 );
+
+    glBegin( GL_POLYGON );
+        glVertex3f( -floor_size.x/2.0, 0, -floor_size.z/2.0 );
+        glVertex3f( floor_size.x/2.0, 0, -floor_size.z/2.0 );
+        glVertex3f( floor_size.x/2.0, 0, floor_size.z/2.0 );
+        glVertex3f( -floor_size.x/2.0, 0, floor_size.z/2.0 );
+    glEnd();
 }
 
 /**
@@ -396,6 +429,8 @@ void renderScene( void )
 {
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT ); // Limpiar la pantalla limpiando también el buffer de color y profundidad.
 
+    // No hago nada con respecto a la luz ambiente (LIGHT0) para respetar los valores por defecto
+    /*
     // Establezco propiedades de la luz de cámara (LIGHT0) en caso de que esté habilitada
     if ( light0.enabled )
     {
@@ -404,6 +439,7 @@ void renderScene( void )
         glLightfv( GL_LIGHT0, GL_DIFFUSE, light0.diffuse );
         glLightfv( GL_LIGHT0, GL_SPECULAR, light0.specular );
     }
+    */
 
     // Establezco propiedades de la luz de escena (LIGHT1) en caso de que esté habilitada
     if ( light1.enabled )
@@ -421,7 +457,8 @@ void renderScene( void )
 
     renderCoordinateAxis(); // Dibujamos ejes de coordenadas
 
-    renderCube( floor_size, floor_color, floor_translation ); // Renderizo un cubo aplanado (suelo)
+    //renderCube( floor_size, floor_color, floor_translation ); // Renderizo un cubo aplanado (suelo)
+    renderPolygonFloor( floor_size ); // Renderizo polígono suelo
 
     // Renderizo el Homer aplicando  transformaciones de rotación
     glColor3f( 0.5, 0.5, 0.5 ); // Establezco color gris para pintar el homer
@@ -469,7 +506,6 @@ void idleRenderScene( void )
 {
     glutPostRedisplay(); // Llamo a postRedisplay para que se ejecute el callback registrado mediante glutDisplayFunc (función renderScene)
 }
-
 
 /***********************************************************************************************************
 ************************************************************************************************************
@@ -553,9 +589,6 @@ void keyboardEvent( unsigned char key, int mouse_x, int mouse_y )
 
         cout << "Pulsa la tecla [m] para cambiar la vista de cámara (Definida por usuario, planta, frente y perfil)." << endl << endl;
 
-        cout << "Pulsa la tecla [1] para resetear la vista de cámara a la vista en planta (1 = número uno, no confundir con letra l)." << endl;
-        cout << "Pulsa la tecla [2] para resetear la vista de cámara a la vista de perfil." << endl << endl;
-
         cout << "/                                                   *** Luces ***                                                     \\" << endl;
         cout << "Pulsa la tecla [c] para des/habilitar la luz de cámara (LIGHT0) (habilitada por defecto)." << endl;
         cout << "Pulsa la tecla [f] para des/habilitar la luz de escena (LIGHT1) (deshabilitada por defecto)." << endl;
@@ -600,23 +633,19 @@ void keyboardEvent( unsigned char key, int mouse_x, int mouse_y )
 
         cameraControl::moveCamera( camera );
     }
-    else if ( key == '1' )
-    {
-        cout << "Se ha reseteado la vista a la vista en planta." << endl;
-
-        cameraControl::floorPlan( &camera );
-    }
-    else if ( key == '2' )
-    {
-        cout << "Se ha reseteado la vista a la vista de perfil." << endl;
-
-        cameraControl::sidePlan( &camera );
-    }
     else if ( key == 'm' )
     {
-        cout << "Se ha reseteado la vista a la vista de perfil." << endl;
+        // Obtengo la siguiente posición de cámara con respecto a la actual.
+        // Este método guardará la posición actual en caso de ser la posición definida por el usuario.
+        camera.dynamic_camera_position = cameraControl::getNext( camera.dynamic_camera_position, camera.euler_angles, camera.vrp_pos );
 
-        cameraControl::sidePlan( &camera );
+        // Calculo los ángulos de la posición a la que he cambiado
+        cameraControl::calcEulerAndVrp( camera.dynamic_camera_position, &camera.euler_angles, &camera.vrp_pos );
+
+        // Muevo la cámara a su nueva posición
+        cameraControl::moveCamera( camera );
+
+        cout << "Se ha reseteado la vista de cámara a la vista " << camera.dynamic_camera_position << "." << endl;
     }
     else if ( key == 'c' )
     {
@@ -657,7 +686,7 @@ void keyboardEvent( unsigned char key, int mouse_x, int mouse_y )
 
         // Vuelvo a inicializar los parámetros (entre ellos las coordenadas de la posición) de la luz
         // Necesario para que cuando se encienda, se haga en la posición que se ha modificado a pesar de estar apagada
-        initLight1Propierties( &light1, floor_size, max_scene_radius, light1.enabled );
+        setLight1Propierties( &light1, floor_size, max_scene_radius, light1.enabled );
 
         cout << "Se ha posicionado la luz de escena en " << light1.dynamic_light_position << " independientemente de si estaba encendida o no." << endl;
     }
@@ -782,11 +811,11 @@ void loadAndCalcObjectData( string object_path, Model *model_structure, ModelCon
   */
 int main( int argc, const char *argv[] )
 {
-    initFloorPropierties( &floor_size, &floor_color, &floor_translation, &max_scene_radius ); // Inicializo suelo
+    setFloorPropierties( &floor_size, &floor_color, &floor_translation, &max_scene_radius ); // Inicializo suelo
 
-    initLight0Propierties( &light0, max_scene_radius, true ); // Inicializo LIGHT0
+    setLight0Propierties( &light0, max_scene_radius, true ); // Inicializo LIGHT0
 
-    initLight1Propierties( &light1, floor_size, max_scene_radius, false ); // Inicializo LIGHT1
+    setLight1Propierties( &light1, floor_size, max_scene_radius, false ); // Inicializo LIGHT1
 
     initGL( argc, argv ); // Inicializo propiedades OpenGL
 

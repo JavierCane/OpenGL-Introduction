@@ -1,5 +1,5 @@
-#ifndef _CAMERA_FUNCTIONS_HPP
-#define _CAMERA_FUNCTIONS_HPP
+#ifndef _CAMERA_CONTROL
+#define _CAMERA_CONTROL
 
 #ifndef _OPEN_GL_INCLUDED
     #if defined(__APPLE__)
@@ -24,6 +24,7 @@ class cameraControl
 {
 
 private:
+
     static const int NUM_POSITIONS = 4;
     static Coord last_user_defined_euler_angles;
     static Coord last_user_defined_vrp_pos;
@@ -58,10 +59,6 @@ public:
     static void initCamera( Camera camera, GLdouble max_scene_radius );
 
     static void moveCamera( Camera camera );
-
-    static void floorPlan( Camera *camera );
-
-    static void sidePlan( Camera *camera );
 };
 
 // Estructura de cámara

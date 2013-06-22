@@ -194,27 +194,3 @@ void cameraControl::moveCamera( Camera camera )
         */
     }
 }
-
-void cameraControl::floorPlan( Camera *camera )
-{
-    camera->euler_angles.x = 90;
-    camera->euler_angles.y = 0;
-    camera->euler_angles.z = 0;
-    camera->vrp_pos.x = 0;
-    camera->vrp_pos.y = 0;
-    camera->vrp_pos.z = 0;
-
-    cameraControl::moveCamera( *camera ); // Declaro posición cámara ortogonal
-}
-
-void cameraControl::sidePlan( Camera *camera )
-{
-    camera->euler_angles.x = 0;
-    camera->euler_angles.y = 90;
-    camera->euler_angles.z = 0;
-    camera->vrp_pos.x = 0;
-    camera->vrp_pos.y = 0;
-    camera->vrp_pos.z = 0;
-
-    cameraControl::moveCamera( *camera ); // Declaro posición cámara ortogonal
-}

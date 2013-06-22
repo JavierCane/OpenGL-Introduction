@@ -13,8 +13,6 @@
     #endif
 #endif
 
-#include "lightControl.cpp"
-
 // Estructura de coordenada
 struct Coord
 {
@@ -30,14 +28,6 @@ struct ModelContainer
     max_translated_vertex, min_translated_vertex, center_translated_vertex;
 
    GLdouble max_translated_radius;
-};
-
-// Estructura de iluminación
-struct Light
-{
-    bool enabled;
-    GLfloat position[4], ambient[4], diffuse[4], specular[4];
-    lightControl::dynamicLightPosition dynamic_light_position;
 };
 
 #endif
