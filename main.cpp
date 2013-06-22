@@ -19,32 +19,28 @@ struct Coord {
    Vertex x, y, z;
 };
 // Estructura de caja contenedora (dos coordenadas, max y min)
-struct Box {
-   Coord max, min;
+struct ModelContainer {
+   Coord max_vertex, min_vertex;
+   double max_radio;
 };
 
 //Modelo homer
 Model homer_model;
 // Caja contenedora del comer
-Box homer_box;
+ModelContainer homer_box;
 // Coordenadas de translación para centrar el homer
 Coord homer_center_translation;
-// Factor de escalador para que el objeto se vea al máximo
+// Coordenadas de translación para centrar el homer en la base del eje de coordenadas
+Coord homer_base_translation;
+// Factor de escalado para que el objeto se vea al máximo
 double homer_scale_factor;
-// ángulo rotación Homer
+// Factor de escalado máximo
+double max_scale_factor;
+// Ángulo rotación Homer
 double homer_angle = 0;
 
-// ángulo rotación Mercury
-double mercury_angle = 0;
-// ángulo rotación Venus
-double venus_angle = 0;
-// ángulo rotación Earth
-double earth_angle = 0;
-// ángulo rotación Moon
-double moon_angle = 0;
-
-// ángulo de rotación del universo ( mod con arrastre de click, first = x, second = y )
-pair<double, double> universe_angle = make_pair( 0, 0 );
+// Grosor en y de la base
+double base_height = 0.05;
 
 /**
   * Inicializamos las propiedades de glut
@@ -63,12 +59,55 @@ void initGL( int argc, const char *argv[] )
 
     //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE ); // Establezco el modo de pintado a "hilo"
     glPolygonMode( GL_FRONT_AND_BACK, GL_FILL ); // Establezco el modo de pintado con relleno
+}
 
-    // Para evitar problemas con el volumen de visión por defecto en OpenGL
+void initOrthoCamera()
+{
     glMatrixMode( GL_PROJECTION );
     glLoadIdentity();
-    glOrtho( -1., 1., -1., 1., -1., 1. );
+
+    // http://www.opengl.org/sdk/docs/man2/xhtml/glOrtho.xml
+    // Distancias desde donde definamos el observador hasta los planos de recorte
+    glOrtho(
+        -1, // left
+        1,  // right
+        -1, // bottom
+        1,  // top
+        0,  // z_near
+        2   // z_far
+    );
+}
+
+void initPerspectiveCamera()
+{
+    glMatrixMode( GL_PROJECTION );
+    glLoadIdentity();
+
+    // http://www.opengl.org/sdk/docs/man2/xhtml/gluPerspective.xml
+
+    gluPerspective(
+        -1, // fovy (ángulo de apertura)
+        1,  // aspect
+        -1, // z_near
+        1   // z_far
+    );
+}
+
+void positionOrthoCamera()
+{
     glMatrixMode( GL_MODELVIEW );
+    glLoadIdentity();
+
+    // http://www.opengl.org/sdk/docs/man2/xhtml/gluLookAt.xml
+    //  El observador (OBS) define la posición de la cámara, que mirará en la dirección que establezca el VRP
+    //  El vector UP, define la orientación de la cámara, no tiene sentido establecerlo en la misma dirección en la que mira, ya que
+    // la orientación realmente se obtiene mediante la proyección del vector de UP en el plano perpendicular a la dirección de visión (recta que une el OBS con VRP).
+    // si sólo es un uno (tipo 0, 0, 1) el vector que se establezca a 1 será el que se vea en el eje y
+    gluLookAt(
+        0, 1, 0, // posición desde dónde miro (obs)
+        0, 0, 0, // posición objetivo a mirar (vrp)
+        1, 0, 0  // orientación de cámara (up)
+    );
 }
 
 /**
@@ -95,57 +134,28 @@ void drawCoordinateAxis()
     glEnd();
 }
 
-void renderSun()
+void renderFloor()
 {
-    glColor3f( 1, 1, 0 ); // Establezco color amarillo para el sol
+    glColor3f( 0.7, 0.7, 0.3 );
     glPushMatrix();
-        glutSolidSphere( 0.3, 25, 25 ); // Radio, número de líneas horizontales, número de líneas verticales
+        glScaled( 1, base_height, 1 );
+        glutSolidCube( 1 );
     glPopMatrix();
 }
 
-void renderMercury()
-{
-    glColor3f( 0, 0, 0.5 );
-    glPushMatrix();
-        glRotated( mercury_angle, 0, 1, 0 ); // número de grados que tiene que rotar y vector de rotación
-        glTranslated( 0.4, 0, 0 );
-        glutSolidSphere( 0.05, 25, 25 );
-    glPopMatrix();
-}
-
-void renderVenus()
-{
-    glColor3f( 1, 0.1, 0.1 );
-    glPushMatrix();
-        glRotated( venus_angle, 0, 1, 0 ); // número de grados que tiene que rotar y vector de rotación
-        glTranslated( 0.6, 0, 0 );
-        glutSolidSphere( 0.09, 25, 25 ); // Radio, número de líneas horizontales, número de líneas verticales
-    glPopMatrix();
-}
-
-void renderEarthAndMoon()
-{
-    glColor3f( 0.1, 1, 0.1 );
-    glPushMatrix();
-        glRotated( earth_angle, 0, 1, 0 ); // número de grados que tiene que rotar y vector de rotación
-        glTranslated( 0.7, 0, 0 );
-        glutSolidSphere( 0.1, 25, 25 ); // Radio, número de líneas horizontales, número de líneas verticales
-
-        glColor3f( 0.7, 0.7, 0.9 );
-        glPushMatrix();
-            glRotated( moon_angle, 0, 1, 0 ); // número de grados que tiene que rotar y vector de rotación
-            glTranslated( 0.12, 0, 0 );
-            glutSolidSphere( 0.03, 25, 25 ); // Radio, número de líneas horizontales, número de líneas verticales
-        glPopMatrix();
-
-    glPopMatrix();
-}
-
-void renderModel( Model *model, Box *model_box, Coord *model_center_translation, double *model_scale_factor )
+void renderModel( Model *model, ModelContainer *model_box, Coord *model_center_translation, Coord *model_base_translation, double *model_scale_factor, bool center_in_0 )
 {
     glScaled( *model_scale_factor, *model_scale_factor, *model_scale_factor ); // Escalo el objeto en base al factor de escala
 
-    glTranslated( model_center_translation->x, model_center_translation->y, model_center_translation->z );
+    // Si quiero centrarlo en el eje de coordenadas, aplico translación en base a model_center_translation
+    if ( center_in_0 )
+    {
+        glTranslated( model_center_translation->x, model_center_translation->y, model_center_translation->z );
+    }
+    else
+    {
+        glTranslated( model_base_translation->x, model_base_translation->y, model_base_translation->z );
+    }
 
     // Obtengo todas las caras del modelo
     const vector<Face> &faces = homer_model.faces();
@@ -167,13 +177,12 @@ void renderModel( Model *model, Box *model_box, Coord *model_center_translation,
 
 void renderHomer()
 {
-
     glColor3f( 0.5, 0.5, 0.5 ); // Establezco color gris para pintar el homer
     glPushMatrix();
-        glRotated( homer_angle, 0.3, 1.8, 0 ); // número de grados que tiene que rotar y vector de rotación
-        glTranslated( 0.5, 0, 0 );
+        glRotated( homer_angle, 0, 1, 0 ); // número de grados que tiene que rotar y vector de rotación
+        glTranslated( 0, homer_box.min_vertex.y, 0 ); // número de grados que tiene que rotar y vector de rotación
         glScaled( 0.2, 0.2, 0.2 ); // Escalo el objeto en base al factor de escala
-        renderModel( &homer_model, &homer_box, &homer_center_translation, &homer_scale_factor );
+        renderModel( &homer_model, &homer_box, &homer_center_translation, &homer_base_translation, &homer_scale_factor, false );
     glPopMatrix();
 }
 
@@ -188,22 +197,13 @@ void renderScene( void )
     // Modifica la última matriz de transformación de la pila de transformaciones substituyéndola por la de identidad.
     // (estado inicial de los vértices), con lo que la próxima vez que ejecute una transformación,
     // lo volverá a hacer sobre el estado inicial (así volvemos a dibujar los ejes de coordenadas sin rotarlos)
-    glLoadIdentity();
+    //glLoadIdentity();
 
     drawCoordinateAxis(); // Dibujamos ejes de coordenadas
 
-    GLdouble m[16];
-    glGetDoublev( GL_MODELVIEW_MATRIX, m );
-    glLoadIdentity();
-    //glRotated( universe_angle.first, 1, 0, 0 );
-    glRotated( universe_angle.second, 0, 1, 0 );
-    glMultMatrixd( m );
+    renderFloor(); // Renderizo un cubo aplanado (suelo)
 
-    renderSun();
-    renderMercury();
-    renderVenus();
-    renderEarthAndMoon();
-    renderHomer();
+    renderHomer(); // Renderizo el Homer aplicando  transformaciones de rotación
 
     glutSwapBuffers();
 }
@@ -243,15 +243,7 @@ void idleRenderScene( void )
     // Modifico el valor del ángulo a girar respecto al que ya había
 
     // ángulo rotación Homer
-    homer_angle = fmod( 2 + homer_angle, 360 );
-    // ángulo rotación Mercury
-    mercury_angle = fmod( 0.5 + mercury_angle, 360 );
-    // ángulo rotación Venus
-    venus_angle = fmod( 0.2 + venus_angle, 360 );
-    // ángulo rotación Earth
-    earth_angle = fmod( 1 + earth_angle, 360 );
-    // ángulo rotación Moon
-    moon_angle = fmod( 1.5 + moon_angle, 360 );
+    homer_angle = fmod( 4 + homer_angle, 360 );
 
     glutPostRedisplay(); // Llamo a postRedisplay para que se ejecute el callback registrado mediante glutDisplayFunc (función renderScene)
 }
@@ -260,71 +252,103 @@ void idleRenderScene( void )
   * Calcula la caja contenedora del modelo model en los dos vectores de vértices máximos y mínimos
   * Asumo que los vectores de vértices los estructuro siguiendo 3 parámetros 0=x, 1=y, 2=z
   */
-void calcObjectBox( Model *model, Box *model_box )
+void calcObjectBoxAndSphere( Model *model, ModelContainer *model_box )
 {
     // Obtengo todos los vértices del modelo
     const vector<Vertex> &vertexs = ( *model ).vertices();
 
     // Cargo los valores del primer vértice de la primera cara para inicializar
-    ( *model_box ).max.x = ( *model ).vertices()[0];
-    ( *model_box ).max.y = ( *model ).vertices()[1];
-    ( *model_box ).max.z = ( *model ).vertices()[2];
-    ( *model_box ).min.x = ( *model ).vertices()[0];
-    ( *model_box ).min.y = ( *model ).vertices()[1];
-    ( *model_box ).min.z = ( *model ).vertices()[2];
+    ( *model_box ).max_vertex.x = ( *model ).vertices()[0];
+    ( *model_box ).max_vertex.y = ( *model ).vertices()[1];
+    ( *model_box ).max_vertex.z = ( *model ).vertices()[2];
+    ( *model_box ).min_vertex.x = ( *model ).vertices()[0];
+    ( *model_box ).min_vertex.y = ( *model ).vertices()[1];
+    ( *model_box ).min_vertex.z = ( *model ).vertices()[2];
+    ( *model_box ).max_radio = (double) sqrt(
+        ( *model ).vertices()[0] * ( *model ).vertices()[0] +
+        ( *model ).vertices()[1] * ( *model ).vertices()[1] +
+        ( *model ).vertices()[2] * ( *model ).vertices()[2]
+    );
 
     // Itero por cada vértice del modelo
     for ( int vertex_iteration = 0; vertex_iteration < vertexs.size(); vertex_iteration += 3 )
     {
         // Obtengo máximos
-        ( *model_box ).max.x = max( ( *model_box ).max.x, vertexs[ vertex_iteration ] );
-        ( *model_box ).max.y = max( ( *model_box ).max.y, vertexs[ vertex_iteration + 1 ] );
-        ( *model_box ).max.z = max( ( *model_box ).max.z, vertexs[ vertex_iteration + 2 ] );
+        ( *model_box ).max_vertex.x = max( ( *model_box ).max_vertex.x, vertexs[ vertex_iteration ] );
+        ( *model_box ).max_vertex.y = max( ( *model_box ).max_vertex.y, vertexs[ vertex_iteration + 1 ] );
+        ( *model_box ).max_vertex.z = max( ( *model_box ).max_vertex.z, vertexs[ vertex_iteration + 2 ] );
 
         // Obtengo mínimos
-        ( *model_box ).min.x = min( ( *model_box ).min.x, vertexs[ vertex_iteration ] );
-        ( *model_box ).min.y = min( ( *model_box ).min.y, vertexs[ vertex_iteration + 1 ] );
-        ( *model_box ).min.z = min( ( *model_box ).min.z, vertexs[ vertex_iteration + 2 ] );
-    }
+        ( *model_box ).min_vertex.x = min( ( *model_box ).min_vertex.x, vertexs[ vertex_iteration ] );
+        ( *model_box ).min_vertex.y = min( ( *model_box ).min_vertex.y, vertexs[ vertex_iteration + 1 ] );
+        ( *model_box ).min_vertex.z = min( ( *model_box ).min_vertex.z, vertexs[ vertex_iteration + 2 ] );
 
-    // DEBUG
-    // cout << "x max:" << ( *model_box ).max.x << ", y max: " << ( *model_box ).max.y << ", z max: " << ( *model_box ).max.z << endl;
-    // cout << "x min:" << ( *model_box ).min.x << ", y min: " << ( *model_box ).min.y << ", z min: " << ( *model_box ).min.z << endl;
+        // Calculo radio máximo
+        double radio_tmp = (double) sqrt(
+            vertexs[ vertex_iteration ] * vertexs[ vertex_iteration ] +
+            vertexs[ vertex_iteration + 1 ] * vertexs[ vertex_iteration + 1 ] +
+            vertexs[ vertex_iteration + 2 ] * vertexs[ vertex_iteration + 2 ]
+        );
+
+        if( ( *model_box ).max_radio < radio_tmp )
+        {
+            ( *model_box ).max_radio = radio_tmp;
+        }
+    }
 }
 
 /**
   * Calculo la translación necesaria a aplicar cada vez que queramos centrar el objeto en el eje de coordenadas
   */
-void calcCenterTranslation( Box *model_box, Coord *model_center_translation )
+void calcCenterTranslation( ModelContainer *model_box, Coord *model_center_translation )
 {
-    ( *model_center_translation ).x = - ( ( ( *model_box ).max.x + ( *model_box ).min.x ) / 2 );
-    ( *model_center_translation ).y = - ( ( ( *model_box ).max.y + ( *model_box ).min.y ) / 2 );
-    ( *model_center_translation ).z = - ( ( ( *model_box ).max.z + ( *model_box ).min.z ) / 2 );
+    ( *model_center_translation ).x = - ( ( ( *model_box ).max_vertex.x + ( *model_box ).min_vertex.x ) / 2 );
+    ( *model_center_translation ).y = - ( ( ( *model_box ).max_vertex.y + ( *model_box ).min_vertex.y ) / 2 );
+    ( *model_center_translation ).z = - ( ( ( *model_box ).max_vertex.z + ( *model_box ).min_vertex.z ) / 2 );
+}
+
+/**
+  * Calculo la translación necesaria a aplicar cada vez que queramos centrar el objeto en la base del eje de coordenadas
+  */
+void calcBaseTranslation( ModelContainer *model_box, Coord *model_base_translation, double y_offset )
+{
+    ( *model_base_translation ).x = - ( ( ( *model_box ).max_vertex.x + ( *model_box ).min_vertex.x ) / 2 );
+    ( *model_base_translation ).y = - ( *model_box ).min_vertex.y + y_offset;
+    ( *model_base_translation ).z = - ( ( ( *model_box ).max_vertex.z + ( *model_box ).min_vertex.z ) / 2 );
 }
 
 /**
   * Calculo el factor de escala a aplicar cada vez que queramos redimensionar el objeto con respecto a su máximo volumen manteniendo el ratio de aspecto
   */
-void calcScaleFactor( Box *model_box, double *model_scale_factor )
+void calcScaleFactor( ModelContainer *model_box, double *model_scale_factor )
 {
-    *model_scale_factor = 2 / (
+    *model_scale_factor = 4 / (
+        max(
+            ( ( *model_box ).max_vertex.x - ( *model_box ).min_vertex.x ),
             max(
-                ( ( *model_box ).max.x - ( *model_box ).min.x ),
-                max(
-                    ( ( *model_box ).max.y - ( *model_box ).min.y ),
-                    ( ( *model_box ).max.z - ( *model_box ).min.z )
-                    )
-                )
-                );
+                ( ( *model_box ).max_vertex.y - ( *model_box ).min_vertex.y ),
+                ( ( *model_box ).max_vertex.z - ( *model_box ).min_vertex.z )
+            )
+        )
+    );
 }
 
-/**
-  * Al arrastrar el ratón haciendo click rotamos todo
-  */
-void mouseDragEvent( int mouse_x, int mouse_y )
+void loadAndCalcObjectData()
 {
-    universe_angle.first = fmod( 0.001 * mouse_x + universe_angle.first, 360 );
-    universe_angle.second = fmod( 0.01 * mouse_y + universe_angle.second, 360 );
+    // Cargo objeto del homer
+    homer_model.load( "./Model/homer.obj" );
+
+    // Calculo caja contenedora del objeto
+    calcObjectBoxAndSphere( &homer_model, &homer_box );
+
+    // Calculo la translación necesaria para mover el objeto al centro
+    calcCenterTranslation( &homer_box, &homer_center_translation );
+
+    // Calculo la translación necesaria para mover el objeto al centro
+    calcBaseTranslation( &homer_box, &homer_base_translation, base_height );
+
+    // Calculo el escalado necesario para que se vea todo el homer
+    calcScaleFactor( &homer_box, &homer_scale_factor );
 }
 
 /**
@@ -332,28 +356,20 @@ void mouseDragEvent( int mouse_x, int mouse_y )
   */
 int main( int argc, const char *argv[] )
 {
-    // Inicializar
-    initGL( argc, argv );
+    initGL( argc, argv ); // Inicializo propiedades OpenGL
 
-    // Cargo objeto del homer
-    homer_model.load( "./Model/homer.obj" );
+    loadAndCalcObjectData(); // Cargo el modelo y calculo valores de caja contenedora, translación al origen, translación al suelo y factor de escala
 
-    // Calculo caja contenedora del objeto
-    calcObjectBox( &homer_model, &homer_box );
+    initOrthoCamera(); // Inicializo cámara ortogonal
 
-    // Calculo la translación necesaria para mover el objeto al centro
-    calcCenterTranslation( &homer_box, &homer_center_translation );
+    positionOrthoCamera(); // Declaro posición cámara ortogonal
 
-    // Calculo el escalado necesario para que se vea todo el homer
-    calcScaleFactor( &homer_box, &homer_scale_factor );
-
-    glClearColor( 0.1, 0.1, 0.1, 1.0 );
+    glClearColor( 0.1, 0.1, 0.1, 1.0 ); // Establezo color de fondo de la ventana
 
     // Registro de callbacks
     glutDisplayFunc( renderScene ); // Render principal
     glutReshapeFunc( reshapeScene ); // Render redimensionado ventana (llama automáticamente al callback de glutDisplayFunc())
     glutIdleFunc( idleRenderScene ); // Callback continuo (no llama a glutDisplayFunc() => llamar a glutPostRedisplay())
-    glutMotionFunc( mouseDragEvent ); // Callback de "arrastrar click" de ratón
 
     // Main loop
     glutMainLoop();
