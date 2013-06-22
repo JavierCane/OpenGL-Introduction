@@ -14,4 +14,10 @@ Project information
 Disclaimer
 ------------------
 
-This is a "project" for a college subject, code quality was not evaluated, only OpenGL main concepts, so don't expect SOLID principles applied, sorry about that :)  
+This is a "project" for a college subject, code quality was not evaluated, only OpenGL main concepts, so don't expect SOLID principles applied, sorry about that :)
+
+
+Result example
+------------------
+
+![Result example](OpenGL.jpg "Result example")
